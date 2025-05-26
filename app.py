@@ -43,13 +43,13 @@ def predict_sales():
     try:
         input_data = request.get_json()
 
-        # Convert input to DataFrame
+        # Ensure input_data is always a list of dicts
         if isinstance(input_data, dict):
-            df = pd.DataFrame.from_dict(input_data, orient='index').T
-        elif isinstance(input_data, list):
-            df = pd.DataFrame(input_data)
-        else:
+            input_data = [input_data]
+        elif not isinstance(input_data, list):
             return jsonify({'error': 'Invalid input format: must be a dict or list of dicts'}), 400
+
+        df = pd.DataFrame(input_data)
 
         # Standardize Fat Content values
         df['Item_Fat_Content'].replace({'low fat': 'Low Fat', 'LF': 'Low Fat', 'reg': 'Regular'}, inplace=True)
@@ -89,11 +89,7 @@ def predict_sales():
         predictions = model.predict(df)
         predictions = [round(float(p), 2) for p in predictions]
 
-        # Return single or batch result
-        if isinstance(input_data, dict):
-            return jsonify({'predicted_sales': predictions[0]})
-        else:
-            return jsonify({'predicted_sales': predictions})
+        return jsonify({'predicted_sales': predictions})
 
     except Exception as e:
         return jsonify({'error': f"Sales prediction failed: {str(e)}"}), 500
