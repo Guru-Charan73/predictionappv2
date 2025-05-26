@@ -43,13 +43,16 @@ def predict_sales():
     try:
         input_data = request.get_json()
 
-        # Ensure input_data is always a list of dicts
-        if isinstance(input_data, dict):
-            input_data = [input_data]
-        elif not isinstance(input_data, list):
-            return jsonify({'error': 'Invalid input format: must be a dict or list of dicts'}), 400
+        # ❌ Reject if input is a list
+        if isinstance(input_data, list):
+            return jsonify({'error': 'Only single record supported. Do not send a list.'}), 400
 
-        df = pd.DataFrame(input_data)
+        # ✅ Ensure input is a dictionary
+        if not isinstance(input_data, dict):
+            return jsonify({'error': 'Invalid input format: must be a single JSON object'}), 400
+
+        # Wrap in a list to use DataFrame as before
+        df = pd.DataFrame([input_data])
 
         # Standardize Fat Content values
         df['Item_Fat_Content'].replace({'low fat': 'Low Fat', 'LF': 'Low Fat', 'reg': 'Regular'}, inplace=True)
@@ -72,24 +75,24 @@ def predict_sales():
         # Drop unused fields
         df.drop(['Item_Identifier', 'Outlet_Establishment_Year'], axis=1, inplace=True)
 
-        # Convert numeric columns to float to avoid dtype issues
+        # Convert numeric columns to float
         numeric_columns = ['Item_Weight', 'Item_Visibility', 'Item_MRP', 'Outlet_Age']
         for col in numeric_columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        # Add any missing columns with default 0
+        # Add missing columns
         for col in feature_columns:
             if col not in df.columns:
                 df[col] = 0
 
-        # Reorder columns to match training set
+        # Reorder columns
         df = df[feature_columns]
 
         # Predict
-        predictions = model.predict(df)
-        predictions = [round(float(p), 2) for p in predictions]
+        prediction = model.predict(df)[0]
+        prediction = round(float(prediction), 2)
 
-        return jsonify({'predicted_sales': predictions})
+        return jsonify({'predicted_sales': prediction})
 
     except Exception as e:
         return jsonify({'error': f"Sales prediction failed: {str(e)}"}), 500
