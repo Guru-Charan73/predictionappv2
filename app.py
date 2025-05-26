@@ -10,7 +10,7 @@ app = Flask(__name__)
 model = joblib.load('xgb_sales_model.pkl')
 feature_columns = joblib.load('xgb_feature_columns.pkl')
 
-# Label encoders
+# Initialize LabelEncoders with trained classes
 fat_content_encoder = LabelEncoder()
 fat_content_encoder.classes_ = np.array(['Low Fat', 'Regular'])
 
@@ -21,7 +21,9 @@ location_type_encoder = LabelEncoder()
 location_type_encoder.classes_ = np.array(['Tier 1', 'Tier 2', 'Tier 3'])
 
 outlet_type_encoder = LabelEncoder()
-outlet_type_encoder.classes_ = np.array(['Grocery Store', 'Supermarket Type1', 'Supermarket Type2', 'Supermarket Type3'])
+outlet_type_encoder.classes_ = np.array([
+    'Grocery Store', 'Supermarket Type1', 'Supermarket Type2', 'Supermarket Type3'
+])
 
 outlet_id_encoder = LabelEncoder()
 outlet_id_encoder.classes_ = np.array([
@@ -31,25 +33,26 @@ outlet_id_encoder.classes_ = np.array([
 
 item_type_encoder = LabelEncoder()
 item_type_encoder.classes_ = np.array([
-    'Baking Goods', 'Breads', 'Breakfast', 'Canned', 'Dairy', 'Frozen Foods', 'Fruits and Vegetables',
-    'Hard Drinks', 'Health and Hygiene', 'Household', 'Meat', 'Others',
-    'Seafood', 'Snack Foods', 'Soft Drinks', 'Starchy Foods'
+    'Baking Goods', 'Breads', 'Breakfast', 'Canned', 'Dairy', 'Frozen Foods',
+    'Fruits and Vegetables', 'Hard Drinks', 'Health and Hygiene', 'Household',
+    'Meat', 'Others', 'Seafood', 'Snack Foods', 'Soft Drinks', 'Starchy Foods'
 ])
+
 
 @app.route('/predict', methods=['POST'])
 def predict_sales():
     try:
         input_data = request.get_json()
 
-        # Handle single or batch input
+        # Parse input into DataFrame
         if isinstance(input_data, dict):
-            df = pd.DataFrame([input_data])
+            df = pd.DataFrame.from_dict(input_data, orient='index').T
         elif isinstance(input_data, list):
             df = pd.DataFrame(input_data)
         else:
             return jsonify({'error': 'Invalid input format: must be a dict or list of dicts'}), 400
 
-        # Standardize Fat Content
+        # Standardize Fat Content values
         df['Item_Fat_Content'].replace({'low fat': 'Low Fat', 'LF': 'Low Fat', 'reg': 'Regular'}, inplace=True)
 
         # Fill missing values
@@ -59,7 +62,7 @@ def predict_sales():
         # Feature Engineering
         df['Outlet_Age'] = 2025 - df['Outlet_Establishment_Year']
 
-        # Label Encode
+        # Label Encoding (ensure valid inputs)
         df['Item_Fat_Content'] = fat_content_encoder.transform(df['Item_Fat_Content'])
         df['Outlet_Size'] = outlet_size_encoder.transform(df['Outlet_Size'])
         df['Outlet_Location_Type'] = location_type_encoder.transform(df['Outlet_Location_Type'])
@@ -67,20 +70,22 @@ def predict_sales():
         df['Outlet_Identifier'] = outlet_id_encoder.transform(df['Outlet_Identifier'])
         df['Item_Type'] = item_type_encoder.transform(df['Item_Type'])
 
-        # Drop unused columns
+        # Drop unused fields
         df.drop(['Item_Identifier', 'Outlet_Establishment_Year'], axis=1, inplace=True)
 
-        # Ensure column order
+        # Add any missing columns with default 0
         for col in feature_columns:
             if col not in df.columns:
                 df[col] = 0
+
+        # Reorder columns
         df = df[feature_columns]
 
-        # Prediction
+        # Run predictions
         predictions = model.predict(df)
         predictions = [round(float(p), 2) for p in predictions]
 
-        # Return batch or single result
+        # Return single or batch result
         if isinstance(input_data, dict):
             return jsonify({'predicted_sales': predictions[0]})
         else:
@@ -88,6 +93,7 @@ def predict_sales():
 
     except Exception as e:
         return jsonify({'error': f"Sales prediction failed: {str(e)}"}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
