@@ -6,11 +6,11 @@ from sklearn.preprocessing import LabelEncoder
 
 app = Flask(__name__)
 
-# Load trained model and feature column order
+# Load model and feature column order
 model = joblib.load('xgb_sales_model.pkl')
 feature_columns = joblib.load('xgb_feature_columns.pkl')
 
-# Initialize LabelEncoders with trained classes
+# Label Encoders with predefined classes
 fat_content_encoder = LabelEncoder()
 fat_content_encoder.classes_ = np.array(['Low Fat', 'Regular'])
 
@@ -38,13 +38,12 @@ item_type_encoder.classes_ = np.array([
     'Meat', 'Others', 'Seafood', 'Snack Foods', 'Soft Drinks', 'Starchy Foods'
 ])
 
-
 @app.route('/predict', methods=['POST'])
 def predict_sales():
     try:
         input_data = request.get_json()
 
-        # Parse input into DataFrame
+        # Convert input to DataFrame
         if isinstance(input_data, dict):
             df = pd.DataFrame.from_dict(input_data, orient='index').T
         elif isinstance(input_data, list):
@@ -59,10 +58,10 @@ def predict_sales():
         df['Item_Weight'].fillna(12.8576451841, inplace=True)
         df['Outlet_Size'].fillna('Medium', inplace=True)
 
-        # Feature Engineering
+        # Feature engineering
         df['Outlet_Age'] = 2025 - df['Outlet_Establishment_Year']
 
-        # Label Encoding (ensure valid inputs)
+        # Label Encoding
         df['Item_Fat_Content'] = fat_content_encoder.transform(df['Item_Fat_Content'])
         df['Outlet_Size'] = outlet_size_encoder.transform(df['Outlet_Size'])
         df['Outlet_Location_Type'] = location_type_encoder.transform(df['Outlet_Location_Type'])
@@ -73,15 +72,20 @@ def predict_sales():
         # Drop unused fields
         df.drop(['Item_Identifier', 'Outlet_Establishment_Year'], axis=1, inplace=True)
 
+        # Convert numeric columns to float to avoid dtype issues
+        numeric_columns = ['Item_Weight', 'Item_Visibility', 'Item_MRP', 'Outlet_Age']
+        for col in numeric_columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
         # Add any missing columns with default 0
         for col in feature_columns:
             if col not in df.columns:
                 df[col] = 0
 
-        # Reorder columns
+        # Reorder columns to match training set
         df = df[feature_columns]
 
-        # Run predictions
+        # Predict
         predictions = model.predict(df)
         predictions = [round(float(p), 2) for p in predictions]
 
@@ -93,7 +97,6 @@ def predict_sales():
 
     except Exception as e:
         return jsonify({'error': f"Sales prediction failed: {str(e)}"}), 500
-
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
